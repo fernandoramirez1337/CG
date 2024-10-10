@@ -1,9 +1,13 @@
 #ifndef OGL_MYLIB_HPP
 #define OGL_MYLIB_HPP
 
+#include "shaders.hpp"
 #include <array>
 #include <cmath>
 #include <vector>
+
+#define FLOATS_PER_VERTEX 3
+#define COMPONENTS_PER_VERTEX 3
 
 namespace ogl {
 
@@ -88,67 +92,37 @@ public:
   std::vector<std::vector<unsigned int>> indices;
 
   std::vector<unsigned int> EBOs;
-  std::vector<unsigned int> VAOs;
-  std::vector<unsigned int> VBOs;
+  unsigned int VAO;
+  unsigned int VBO;
 
   shape();
   ~shape();
 
+  shape(const shape&) = default;
+  shape& operator=(const shape&) = default;
+  shape(shape&&) noexcept;
+  shape& operator=(shape&&) noexcept;
+
   void add_vertex(const ogl::point&);
   void add_index(const std::vector<unsigned int>&);
 
-  void get_vertices(float*) const;
-  void get_indices(unsigned int*, size_t = 0) const;
+  [[nodiscard]] std::vector<float> get_vertices() const;
+  [[nodiscard]] std::vector<unsigned int> get_indices(size_t = 0) const;
 
-  shape& operator*=(const matrix& transform) {
-    for (auto& vertex : vertices) {
-      vertex = transform * vertex;
-    }
-    center = transform * center;
-    return *this;
-  }
+  shape& operator*=(const matrix& transform);
+  [[nodiscard]] shape operator*(const matrix& transform) const;
 
-  [[nodiscard]] shape operator*(const matrix& transform) const {
-    shape result = *this;
-    result *= transform;
-    return result;
-  }
+  void rotate_around_center(const ogl::rotate_z& rotation_matrix);
+  void update_center();
+  void scale_around_center(const ogl::scale& scale_matrix);
 
-  void rotate_around_center(const ogl::rotate_z& rotation_matrix) {
-    // Store the current center
-    ogl::point currentCenter = center;
+  void get_vertices(float* vertices_array) const;
+  void get_indices(unsigned int* indices_array, size_t base = 0) const;
 
-    // Translate to origin
-    *this *= ogl::translation(-center.x, -center.y, -center.z);
-    
-    // Apply rotation
-    *this *= rotation_matrix;
-    
-    *this *= ogl::translation(currentCenter.x, currentCenter.y, currentCenter.z);
+  void setup_gl();
+  void sub_data_gl();
 
-    center = currentCenter;
-  }
-
-  void update_center() {
-    center = ogl::point(0.0f, 0.0f, 0.0f);
-    for (const auto& vertex : vertices) {
-      center.x += vertex.x;
-      center.y += vertex.y;
-      center.z += vertex.z;
-    }
-    center.x /= vertices.size();
-    center.y /= vertices.size();
-    center.z /= vertices.size();
-  }
-
-  void scale_around_center(const ogl::scale& scale_matrix) {
-    ogl::point currentCenter = center;
-
-    *this *= ogl::translation(-center.x, -center.y, -center.z);
-    *this *= scale_matrix;
-    *this *= ogl::translation(currentCenter.x, currentCenter.y, currentCenter.z);
-
-  }
+  void draw_gl(unsigned int render_mode,std::array<ShaderProgram, 5> shaderPrograms);
 };
 
 } // namespace ogl

@@ -53,8 +53,6 @@ void create_pizza1() {
     7, 0, 8
   });
 
-  pizza1.VAOs.resize(1);
-  pizza1.VBOs.resize(1);
   pizza1.EBOs.resize(2);
 
   pizza1.update_center();

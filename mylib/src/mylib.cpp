@@ -1,7 +1,12 @@
 #include "mylib.hpp"
+#include "shaders.hpp"
+#include <glad/glad.h>
+
+
 #include <cmath>
 #include <numeric>
 #include <algorithm>
+
 
 // ------------------------------
 // vector class
@@ -176,27 +181,41 @@ ogl::projection::projection(float fov, float aspect, float near, float far) noex
 // ------------------------------
 // Shape class
 // ------------------------------
-ogl::shape::shape() {
-  center = ogl::point(0.0f, 0.0f, 0.0f);
-}
+ogl::shape::shape() : center(0.0f, 0.0f, 0.0f) {}
 
 ogl::shape::~shape() {
-  
+  glDeleteVertexArrays(1, &VAO);
+  glDeleteBuffers(1, &VBO);
+  glDeleteBuffers(indices.size(), &EBOs[0]);
 }
 
-void ogl::shape::get_vertices(float* ve) const {
-  for (size_t i = 0; i < vertices.size(); ++i) {
-    size_t index = i * 3;
-    ve[index] = vertices[i].x;
-    ve[index + 1] = vertices[i].y;
-    ve[index + 2] = vertices[i].z;
-  } 
-}
+ogl::shape::shape(shape&& other) noexcept
+  : vertices(std::move(other.vertices)),
+    center(std::move(other.center)),
+    indices(std::move(other.indices)) {}
 
-void ogl::shape::get_indices(unsigned int* in, size_t base) const {
-  for (size_t i = 0; i < indices[base].size(); ++i) {
-    in[i] = indices[base][i];
+ogl::shape& ogl::shape::operator=(shape&& other) noexcept {
+  if (this != &other) {
+    vertices = std::move(other.vertices);
+    center = std::move(other.center);
+    indices = std::move(other.indices);
   }
+  return *this;
+}
+
+[[nodiscard]] std::vector<float> ogl::shape::get_vertices() const {
+  std::vector<float> result;
+  result.reserve(vertices.size() * 3);
+  for (const auto& vertex : vertices) {
+    result.push_back(vertex.x);
+    result.push_back(vertex.y);
+    result.push_back(vertex.z);
+  }
+  return result;
+}
+
+[[nodiscard]] std::vector<unsigned int> ogl::shape::get_indices(size_t base) const {
+  return indices[base];
 }
 
 void ogl::shape::add_vertex(const ogl::point& v) {
@@ -205,4 +224,107 @@ void ogl::shape::add_vertex(const ogl::point& v) {
 
 void ogl::shape::add_index(const std::vector<unsigned int>& i) {
   indices.push_back(i);
+}
+
+ogl::shape& ogl::shape::operator*=(const matrix& transform) {
+  for (auto& vertex : vertices) {
+    vertex = transform * vertex;
+  }
+  center = transform * center;
+  return *this;
+}
+
+[[nodiscard]] ogl::shape ogl::shape::operator*(const matrix& transform) const {
+  shape result = *this;
+  result *= transform;
+  return result;
+}
+
+void ogl::shape::rotate_around_center(const ogl::rotate_z& rotation_matrix) {
+  ogl::point currentCenter = center;
+  *this *= ogl::translation(-center.x, -center.y, -center.z);
+  *this *= rotation_matrix;
+  *this *= ogl::translation(currentCenter.x, currentCenter.y, currentCenter.z);
+  center = currentCenter;
+}
+
+void ogl::shape::update_center() {
+  center = std::accumulate(vertices.begin(), vertices.end(), ogl::point(),
+    [](const ogl::point& acc, const ogl::point& v) {
+      return ogl::point(acc.x + v.x, acc.y + v.y, acc.z + v.z);
+    });
+  float inv_size = 1.0f / vertices.size();
+  center.x *= inv_size;
+  center.y *= inv_size;
+  center.z *= inv_size;
+}
+
+void ogl::shape::scale_around_center(const ogl::scale& scale_matrix) {
+  ogl::point currentCenter = center;
+  *this *= ogl::translation(-center.x, -center.y, -center.z);
+  *this *= scale_matrix;
+  *this *= ogl::translation(currentCenter.x, currentCenter.y, currentCenter.z);
+}
+
+void ogl::shape::get_vertices(float* vertices_array) const {
+  size_t i = 0;
+  for (const auto& vertex : vertices) {
+    vertices_array[i++] = vertex.x;
+    vertices_array[i++] = vertex.y;
+    vertices_array[i++] = vertex.z;
+  }
+}
+
+void ogl::shape::get_indices(unsigned int* indices_array, size_t base) const {
+  if (base < indices.size()) {
+    std::copy(indices[base].begin(), indices[base].end(), indices_array);
+  }
+}
+
+void ogl::shape::setup_gl() {
+  size_t size_of_vertices = vertices.size() * sizeof(float) * COMPONENTS_PER_VERTEX;
+  size_t how_many_EBOs = indices.size();
+  glGenVertexArrays(1, &VAO);
+  glGenBuffers(1, &VBO);
+  glGenBuffers(how_many_EBOs, &EBOs[0]);
+
+  glBindVertexArray(VAO);
+  glBindBuffer(GL_ARRAY_BUFFER, VBO);
+  glBufferData(GL_ARRAY_BUFFER, size_of_vertices, vertices.data(), GL_DYNAMIC_DRAW);
+
+  for (size_t i = 0; i < how_many_EBOs; ++i) {
+    size_t size_of_indices = indices[i].size() * sizeof(unsigned int);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBOs[i]);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, size_of_indices, indices[i].data(), GL_STATIC_DRAW);
+  }
+
+  glVertexAttribPointer(0, COMPONENTS_PER_VERTEX, GL_FLOAT, GL_FALSE, COMPONENTS_PER_VERTEX * sizeof(float), (void*)0);
+  glEnableVertexAttribArray(0);
+}
+
+void ogl::shape::sub_data_gl() {
+  size_t size_of_vertices = vertices.size() * sizeof(float) * COMPONENTS_PER_VERTEX;  
+  glBindBuffer(GL_ARRAY_BUFFER, VBO);
+  glBufferSubData(GL_ARRAY_BUFFER, 0, size_of_vertices, vertices.data());
+}
+
+void ogl::shape::draw_gl(unsigned int render_mode,std::array<ShaderProgram, 5> shaderPrograms) {
+  if (render_mode == GL_LINES) {
+    glUseProgram(shaderPrograms[WHITE].id); // White
+    glBindVertexArray(VAO);
+    glDrawElements(GL_LINE_LOOP, indices[0].size() , GL_UNSIGNED_INT, 0);
+  } else if (render_mode == GL_TRIANGLES) {
+    glUseProgram(shaderPrograms[BLACK].id); // Black
+    glBindVertexArray(VAO);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBOs[1]);
+    glDrawElements(GL_TRIANGLES, indices[1].size(), GL_UNSIGNED_INT, 0);
+  } else if (render_mode == GL_POINTS) {
+    glUseProgram(shaderPrograms[WHITE].id); // White
+    glDrawElements(GL_LINE_LOOP, indices[0].size(), GL_UNSIGNED_INT, 0);
+    glUseProgram(shaderPrograms[RED].id); // Red
+    glBindVertexArray(VAO);
+    glPointSize(10.0f);
+    glDrawElements(GL_POINTS, indices[0].size(), GL_UNSIGNED_INT, 0);
+    glPointSize(1.0f);
+  }
 }

@@ -18,6 +18,7 @@ std::array<ShaderProgram, 5> shaderPrograms;
 int main() {
   //create_testShape();
   create_pizza1();
+  
   // GLFW initialization and configuration
   glfwInit();
   glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
@@ -47,94 +48,20 @@ int main() {
 
   shaderPrograms = createAllShaderPrograms();
 
-  const size_t verticesPerPoint = 3;
-  const size_t numberOfVertices = pizza1.vertices.size() * verticesPerPoint;
-
-  float vertices[numberOfVertices];
-  pizza1.get_vertices(vertices);
-
-  const size_t numberOfIndices = pizza1.indices[0].size();
-  unsigned int indices[numberOfIndices];
-  pizza1.get_indices(indices);
-
-  const size_t numberOfIndices2 = pizza1.indices[1].size();
-  unsigned int indices2[numberOfIndices2];
-  pizza1.get_indices(indices2, 1);
-
-  // Print vertices
-  std::cout << "Vertices:" << std::endl;
-  for (size_t i = 0; i < numberOfVertices; i += 3) {
-    std::cout << "(" << vertices[i] << ", " << vertices[i+1] << ", " << vertices[i+2] << ")" << std::endl;
-  }
-
-  // Print indices
-  std::cout << "\nIndices:" << std::endl;
-  for (size_t i = 0; i < numberOfIndices; ++i) {
-    std::cout << indices[i] << " ";
-    if ((i + 1) % 3 == 0) std::cout << std::endl;  // New line every 3 indices
-  }
-
-  std::cout << "\nIndices2:" << std::endl;
-  for (size_t i = 0; i < numberOfIndices2; ++i) {
-    std::cout << indices2[i] << " ";
-    if ((i + 1) % 3 == 0) std::cout << std::endl;  // New line every 3 indices
-  }
-
-  glGenVertexArrays(1, &pizza1.VAOs[0]);
-  glGenBuffers(1, &pizza1.VBOs[0]);
-  glGenBuffers(2, &pizza1.EBOs[0]);
-
-  glBindVertexArray(pizza1.VAOs[0]);
-  glBindBuffer(GL_ARRAY_BUFFER, pizza1.VBOs[0]);
-  glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_DYNAMIC_DRAW);
-
-  glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, pizza1.EBOs[0]);
-  glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(indices), indices, GL_STATIC_DRAW);
-
-  glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, pizza1.EBOs[1]);
-  glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(indices2), indices2, GL_STATIC_DRAW);
-
-  const size_t componentsPerVertex = 3;
-  glVertexAttribPointer(0, componentsPerVertex, GL_FLOAT, GL_FALSE, componentsPerVertex * sizeof(float), (void*)0);
-  glEnableVertexAttribArray(0);
+  pizza1.setup_gl();
 
   // Render loop
   while (!glfwWindowShouldClose(window)) {
-    pizza1.get_vertices(vertices);
-
-    glBindBuffer(GL_ARRAY_BUFFER, pizza1.VBOs[0]);
-    glBufferSubData(GL_ARRAY_BUFFER, 0, numberOfVertices * sizeof(float), vertices);
+    pizza1.sub_data_gl();
 
     glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-    if (renderMode == GL_LINES) {
-      glUseProgram(shaderPrograms[1].id); // White
-      glBindVertexArray(pizza1.VAOs[0]);
-      glDrawElements(GL_LINE_LOOP, numberOfIndices, GL_UNSIGNED_INT, 0);
-    } else if (renderMode == GL_TRIANGLES) {
-      glUseProgram(shaderPrograms[0].id); // Black
-      glBindVertexArray(pizza1.VAOs[0]);
-      glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, pizza1.EBOs[1]);
-      glDrawElements(GL_TRIANGLES, numberOfIndices2, GL_UNSIGNED_INT, 0);
-    } else if (renderMode == GL_POINTS) {
-      glUseProgram(shaderPrograms[1].id); // White
-      glDrawElements(GL_LINE_LOOP, numberOfIndices, GL_UNSIGNED_INT, 0);
-      glUseProgram(shaderPrograms[2].id); // Red
-      glBindVertexArray(pizza1.VAOs[0]);
-      glPointSize(10.0f);
-      glDrawElements(GL_POINTS, numberOfIndices, GL_UNSIGNED_INT, 0);
-      glPointSize(1.0f);
-    }
+    pizza1.draw_gl(renderMode, shaderPrograms);
 
     glfwSwapBuffers(window);
     glfwPollEvents();
   }
-
-  // Cleanup
-  glDeleteVertexArrays(2, pizza1.VAOs.data());
-  glDeleteBuffers(2, pizza1.VBOs.data());
-  glDeleteBuffers(2, pizza1.EBOs.data());
 
   for (auto& program : shaderPrograms) {
     glDeleteShader(program.vertexShader);
